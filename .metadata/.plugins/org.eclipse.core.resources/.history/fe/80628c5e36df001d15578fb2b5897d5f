@@ -1,0 +1,36 @@
+package comos.main;
+
+
+import br.ufal.aracomp.cosmos.emprestimo.impl.ComponentFactory;
+import br.ufal.aracomp.cosmos.emprestimo.spec.dt.UsuarioDT;
+import br.ufal.aracomp.cosmos.emprestimo.spec.prov.IEmprestimoOps;
+import br.ufal.aracomp.cosmos.limite.spec.prov.ILimiteOps;
+import comos.conectorEmprestimoLimite.ConectorEmprestimoLimite;
+
+public class Main {
+
+	public static void main(String[] args) {
+		// Instanciando emprestimo
+		br.ufal.aracomp.cosmos.emprestimo.spec.prov.IManager compEmp = 
+				ComponentFactory.createInstance();
+		// Instanciando Limites
+		br.ufal.aracomp.cosmos.limite.spec.prov.IManager compLimite =
+				br.ufal.aracomp.cosmos.limite.impl.ComponentFactory.createInstance();
+	
+		// Instaciando o conector
+		ILimiteOps limiteOps;
+		limiteOps = (ILimiteOps)compLimite.getProvidedInterface("ILimiteOps");
+		
+		ConectorEmprestimoLimite conector = new ConectorEmprestimoLimite(limiteOps);
+		
+		
+		compEmp.setRequiredInterface("ILimiteReq", conector);
+		
+		IEmprestimoOps objEmpOps = (IEmprestimoOps)compEmp.getProvidedInterface("IEmprestimoOps");
+		UsuarioDT usuario = new UsuarioDT();
+		usuario.rendimentos = "1001";
+		System.out.println(objEmpOps.liberarEmprestimoAutomatico(usuario));
+
+	}
+
+}

@@ -1,0 +1,121 @@
+package comos.conectorEmprestimoLimite;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+import br.ufal.aracomp.cosmos.emprestimo.spec.dt.UsuarioDT;
+import br.ufal.aracomp.cosmos.emprestimo.spec.req.ILimiteReq;
+import br.ufal.aracomp.cosmos.limite.spec.dt.ClienteDT;
+import br.ufal.aracomp.cosmos.limite.spec.prov.ILimiteOps;
+import br.ufal.aracomp.cosmos.limite2.spec.dt.ClienteDT2;
+import br.ufal.aracomp.cosmos.limite2.spec.prov.ILimiteOps2;
+import br.ufal.aracomp.cosmos.limite3.spec.dt.ClienteDT3;
+import br.ufal.aracomp.cosmos.limite3.spec.prov.ILimiteOps3;
+import comos.excecao.OperacaoNaoDisponivelException;
+
+public class ConectorEmprestimoLimite implements ILimiteReq {
+	
+	ILimiteOps limiteOps;
+	ILimiteOps2 limiteOps2;
+	ILimiteOps3 limiteOps3;
+	
+	public ConectorEmprestimoLimite(ILimiteOps limiteOps, ILimiteOps2 limiteOps2, ILimiteOps3 limiteOps3) {
+		this.limiteOps = limiteOps;
+		this.limiteOps2 = limiteOps2;
+		this.limiteOps3 = limiteOps3;
+	}
+	
+	// Recebe os Limites e Retorna a diferença entre eles
+	public double diferencaEntreLimites(double limite1, double limite2) {
+		double max = limite1;
+		double min = limite2;
+		if (limite2 > max) {
+			max = limite2;
+		} else if (limite2 < min) {
+			min = limite2;
+		}
+		double resultado = (max - min);
+		return resultado;
+	}
+
+	// Recebe difença entre os limites e retorna a divisão com seus limites respectivos
+	public double [] divisaoEntreDiferençaELimite(double diferenca, List<Double> list) {
+		double resultado[] = new double[2];
+		int i;
+		for (i=0; i<list.size(); i++) {
+			resultado[i] = diferenca / list.get(i);
+		    }
+		return resultado;
+	}
+		
+	@Override
+	public double estimarLimite(UsuarioDT usuario) throws OperacaoNaoDisponivelException {
+		try {
+			ClienteDT cliente = new ClienteDT();
+			cliente.salario = Double.parseDouble(usuario.rendimentos);
+			double limite1 = this.limiteOps.calcularLimite(cliente);
+			
+			ClienteDT2 cliente2 = new ClienteDT2();
+			cliente2.salario = Double.parseDouble(usuario.rendimentos);
+			double limite2 = this.limiteOps2.calcularLimite(cliente2);
+			
+			ClienteDT3 cliente3 = new ClienteDT3();
+			cliente3.salario = Double.parseDouble(usuario.rendimentos);
+			double limite3 = this.limiteOps3.calcularLimite(cliente3);
+
+			// Variação percentual entre 3 limites
+			// OBS: calculo é feito assim: (maiorvalor-menorvalor) / maiorValor & (maiorvalor-menorvalor) / menorValor
+			
+			// Pegando a subtração entre os 3 Limites
+			double diferençaL1L2 = diferencaEntreLimites(limite1, limite2);
+			double diferençaL1L3 = diferencaEntreLimites(limite1, limite3);
+			double diferençaL2L3 = diferencaEntreLimites(limite2, limite3);
+			
+			// Adicionar os limites na ordem do calculo da divisão
+			ArrayList<Double> tresLimites = new ArrayList<Double>();
+			tresLimites.add(limite1); 
+			tresLimites.add(limite2); 
+			tresLimites.add(limite3); 
+			
+			// Dividindo a diferença entre os limtes com o Maior e o Menor Limite
+			double resultado3Limites[] = divisaoEntreDiferençaELimite(diferençaL1L2L3, tresLimites);
+	
+			// Variação percentual entre 2 limites
+			double diferençaL1L2 = diferencaEntreLimites(limite1, limite2, "");
+			double diferençaL1L3 = diferencaEntreLimites(limite1, limite3, "");
+			double diferençaL2L3 = diferencaEntreLimites(limite2, limite3, "");						
+			
+			// adicionado os limites na ordem que vão ser utilizados
+			List<Double> doisLimites = new ArrayList<Double>();
+			doisLimites.add(limite1); 
+			doisLimites.add(limite2); 
+			doisLimites.add(limite1); 
+			doisLimites.add(limite3); 
+			doisLimites.add(limite2); 
+			doisLimites.add(limite3); 
+			
+			// Dividindo a diferença entre os limtes com o Maior e o Menor Limite
+			double resultadoDuplasL1L2 [] = divisaoEntreDiferençaELimite(diferençaL1L2, doisLimites.subList(0,2)); //OBS: intervalo aberto
+			double resultadoDuplasL1L3 [] = divisaoEntreDiferençaELimite(diferençaL1L3, doisLimites.subList(2,4)); //diferençaL1L3 / limite1; 
+			double resultadoDuplasL2L3 [] = divisaoEntreDiferençaELimite(diferençaL2L3, doisLimites.subList(4,6)); //diferençaL2L3 / limite2; 
+			
+			
+			if ((resultado3Limites[0] <= 0.05 && resultado3Limites[1] <= 0.05 && resultado3Limites[2] <= 0.05)) {
+				return (limite1 + limite2 + limite3) / 3;
+			} else if (resultadoDuplasL1L2[0] <= 0.05 && resultadoDuplasL1L2[1] <= 0.05) {
+				return (limite1 + limite2) / 2;
+			} else if (resultadoDuplasL1L3[0] <= 0.05 && resultadoDuplasL1L3[1] <= 0.05) {
+				return (limite1 + limite3) / 2;
+			} else if (resultadoDuplasL2L3[0] <= 0.05 && resultadoDuplasL2L3[1] <= 0.05) {
+				return (limite2 + limite3) / 2;
+			} else {
+				throw new OperacaoNaoDisponivelException();
+			}
+			
+		} catch (NumberFormatException e) {
+			return 0;
+		}
+	}
+
+}
