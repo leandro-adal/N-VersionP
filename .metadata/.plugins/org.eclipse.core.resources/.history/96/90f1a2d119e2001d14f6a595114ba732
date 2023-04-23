@@ -1,0 +1,132 @@
+package comos.conectorEmprestimoLimite;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+
+import br.ufal.aracomp.cosmos.emprestimo.spec.dt.UsuarioDT;
+import br.ufal.aracomp.cosmos.emprestimo.spec.req.ILimiteReq;
+import br.ufal.aracomp.cosmos.limite.spec.dt.ClienteDT;
+import br.ufal.aracomp.cosmos.limite.spec.prov.ILimiteOps;
+import br.ufal.aracomp.cosmos.limite2.spec.dt.ClienteDT2;
+import br.ufal.aracomp.cosmos.limite2.spec.prov.ILimiteOps2;
+import br.ufal.aracomp.cosmos.limite3.spec.dt.ClienteDT3;
+import br.ufal.aracomp.cosmos.limite3.spec.prov.ILimiteOps3;
+import comos.excecao.OperacaoNaoDisponivelException;
+
+public class ConectorEmprestimoLimite implements ILimiteReq {
+
+	ILimiteOps limiteOps;
+	ILimiteOps2 limiteOps2;
+	ILimiteOps3 limiteOps3;
+
+	public ConectorEmprestimoLimite(ILimiteOps limiteOps, ILimiteOps2 limiteOps2, ILimiteOps3 limiteOps3) {
+		this.limiteOps = limiteOps;
+		this.limiteOps2 = limiteOps2;
+		this.limiteOps3 = limiteOps3;
+	}
+
+	// Recebe os Limites e Retorna a diferença entre eles
+	public double diferencaEntreLimites(double limite1, double limite2) {
+		double max = limite1;
+		double min = limite2;
+		if (limite2 > max) {
+			max = limite2;
+		} else if (limite2 < min) {
+			min = limite2;
+		}
+		double resultado = (max - min);
+		return resultado;
+	}
+
+	// Recebe difença entre os limites e retorna a divisão com seus limites
+	// respectivos
+	public List<Double> divisaoEntreDiferençaELimite(double diferenca, List<Double> limites) {
+		List<Double> resultado = new ArrayList<Double>();
+		//double resultado[] = new double[2];
+		int i;
+		for (i = 0; i < limites.size(); i++) {
+			resultado.add(diferenca / limites.get(i));
+		}
+		return resultado;
+	}
+
+	public Map<List<Double>, List<Double>> VariacaoPercentual(List<Double> limites) {
+	    Map<List<Double>, List<Double>> resultadoDuplas = new HashMap<>();
+	    int i, j;
+	    for (i = 0; i < limites.size() - 1; i++) {
+	        for (j = i + 1; j < limites.size(); j++) {
+	            double limiteI = limites.get(i);
+	            double limiteJ = limites.get(j);
+	            double diferença = diferencaEntreLimites(limiteI, limiteJ);
+	            List<Double> doisLimites = new ArrayList<Double>();
+	            doisLimites.add(limiteI);
+	            doisLimites.add(limiteJ);
+	            resultadoDuplas.put(doisLimites, divisaoEntreDiferençaELimite(diferença, doisLimites));
+	        }
+	    }
+	    return resultadoDuplas;
+	}
+	
+	// Determina quais variações estão dentro da margem de 5%
+	public List<Double> MargemDeConfianca(Map<List<Double>, List<Double>> variacaoDuplas){
+		List<Double> dentroDaMargem = new ArrayList<>();
+		for (List<Double> duplaLimites : variacaoDuplas.keySet()) {
+		    List<Double> duplaDeVariacoes = variacaoDuplas.get(duplaLimites);
+		    int contDentroDaMargem = 0;
+		    double somaValoresDentroDaMargem = 0;
+		    for (int i = 0; i < duplaDeVariacoes.size(); i++) {
+		        Double variacao = duplaDeVariacoes.get(i);
+		        if (variacao <= 0.05) { // Verifica se a variação é menor ou igual a 5%
+		            contDentroDaMargem++;
+		            somaValoresDentroDaMargem += duplaLimites.get(i);
+		        }
+		    }
+		    // Se ao menos dois valores estiverem dentro da margem, adiciona a média entre eles
+		    if (contDentroDaMargem >= 2) {
+		        dentroDaMargem.add(somaValoresDentroDaMargem / contDentroDaMargem);
+		    }
+		}
+		return dentroDaMargem;
+	}
+
+	@Override
+	public double estimarLimite(UsuarioDT usuario) {
+		try {
+			List<Double> limites = new ArrayList<>();
+
+			ClienteDT cliente = new ClienteDT();
+			cliente.salario = Double.parseDouble(usuario.rendimentos);
+			limites.add(this.limiteOps.calcularLimite(cliente));
+
+			ClienteDT2 cliente2 = new ClienteDT2();
+			cliente2.salario = Double.parseDouble(usuario.rendimentos);
+			limites.add(this.limiteOps2.calcularLimite(cliente2));
+
+			ClienteDT3 cliente3 = new ClienteDT3();
+			cliente3.salario = Double.parseDouble(usuario.rendimentos);
+			limites.add(this.limiteOps3.calcularLimite(cliente3));
+
+			Map<List<Double>, List<Double>> variacaoDuplas = VariacaoPercentual(limites);
+			List<Double> dentroDaMargem = MargemDeConfianca(variacaoDuplas);
+
+			if (dentroDaMargem.isEmpty()) {
+				throw new OperacaoNaoDisponivelException();
+			}
+
+			// Calcula a média dos limites dentro da margem
+			double media = 0;
+	        for (Double limite : dentroDaMargem) {
+	            media += limite;
+	        }
+	        media /= dentroDaMargem.size();
+
+	        return media;
+
+		} catch (NumberFormatException e) {
+			return 0;
+		}
+	}
+
+}
